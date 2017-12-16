@@ -21,7 +21,7 @@ import sys
 config = ConfigParser()
 config.read('win_capture_config.ini')
 if config['DEFAULT']['Configed'] == 'False':
-    raise Exception('Please edit the paths in the config and then set Configed to True')
+    raise Exception('Please confirm the settings in config and then set Configed to True')
     
 gdi_path = config['DEFAULT']['WinGDIPath']
 gdi = ctypes.WinDLL(gdi_path)
@@ -75,12 +75,9 @@ class WindowsScreenFetcher:
         self.game_width = int(config['DEFAULT']['GameWidth'])
         self.screenshot_dir = config['DEFAULT']['ScreenshotDirPath']
         
-        self.window_width = 1176
-        self.window_height = 644
-        
         #might not need this
-        self.game_width_start = 0
-        self.game_height_start = 0
+        self.game_width_offset = int(config['DEFAULT']['GameWidthOffset'])
+        self.game_height_offset = int(config['DEFAULT']['GameHeightOffset'])
         
     def get_device_contexts(self):
         goi_dc_handle = win32gui.GetWindowDC(self.goi_hwnd)
@@ -122,8 +119,8 @@ class WindowsScreenFetcher:
             self.game_width,
             self.game_height, 
             goi_dc_h,
-            self.game_width_start,
-            self.game_height_start,
+            self.game_width_offset,
+            self.game_height_offset,
             win32con.SRCCOPY | CAPTUREBLT
         )
 
@@ -157,7 +154,7 @@ class WindowsScreenFetcher:
         
 if __name__ == '__main__':
     benchmark_capture = False
-    test_capture = False
+    test_capture = True
 
     #Benchmark capture time
     if benchmark_capture:
@@ -173,7 +170,7 @@ if __name__ == '__main__':
     if test_capture:
         fetcher = WindowsScreenFetcher()
         fetcher.focus_window()
-        for i in range(50):
+        for i in range(10):
             fetcher.get_game_window(i)
         fetcher.cleanup()
     
