@@ -15,6 +15,7 @@ import random
 import win32gui
 import win32ui
 import win32con
+import win32api
 import ctypes
 import sys
 
@@ -25,6 +26,48 @@ if config['DEFAULT']['Configed'] == 'False':
     
 gdi_path = config['DEFAULT']['WinGDIPath']
 gdi = ctypes.WinDLL(gdi_path)
+
+LONG = ctypes.c_long
+DWORD = ctypes.c_ulong
+ULONG_PTR = ctypes.POINTER(DWORD)
+WORD = ctypes.c_ushort
+
+INPUT_MOUSE = 0
+MOUSEEVENTF_MOVE = 0x0001
+
+#mouseData, time and dwExtraInfo should be zero for us
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = (('dx', LONG),
+                ('dy', LONG),
+                ('mouseData', DWORD),
+                ('dwFlags', DWORD),
+                ('time', DWORD),
+                ('dwExtraInfo', ULONG_PTR))
+
+
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = (('wVk', WORD),
+                ('wScan', WORD),
+                ('dwFlags', DWORD),
+                ('time', DWORD),
+                ('dwExtraInfo', ULONG_PTR))
+
+
+class HARDWAREINPUT(ctypes.Structure):
+    _fields_ = (('uMsg', DWORD),
+                ('wParamL', WORD),
+                ('wParamH', WORD))
+
+
+class _INPUTunion(ctypes.Union):
+    _fields_ = (('mi', MOUSEINPUT),
+                ('ki', KEYBDINPUT),
+                ('hi', HARDWAREINPUT))
+
+
+class INPUT(ctypes.Structure):
+    _fields_ = (('type', DWORD),
+                ('union', _INPUTunion))
 
 class BITMAPINFOHEADER(Structure):
     _fields_ = [
@@ -151,10 +194,23 @@ class WindowsScreenFetcher:
         self.mem_dc.DeleteDC()
         win32gui.ReleaseDC(self.goi_hwnd, self.goi_dc_h)
         
+    def send_inputs(self, inputs):
+        nInputs = len(inputs)
+        LPINPUT = INPUT * nInputs
+        pInputs = LPINPUT(*inputs)
+        cbSize = ctypes.c_int(ctypes.sizeof(INPUT))
+        return ctypes.windll.user32.SendInput(nInputs, pInputs, cbSize)   
+        
+    def move_mouse(self, dx, dy):
+        long_x = LONG(x)
+        long_y = LONG(y)
+        mouse_move_event = [INPUT(INPUT_MOUSE, _INPUTunion(mi = MOUSEINPUT(long_x, long_y, 0, MOUSEEVENTF_MOVE, 0, None)))]
+        self.send_inputs(mouse_move_event)
         
 if __name__ == '__main__':
     benchmark_capture = False
-    test_capture = True
+    test_capture = False
+    test_mouse = False
 
     #Benchmark capture time
     if benchmark_capture:
@@ -174,5 +230,13 @@ if __name__ == '__main__':
             fetcher.get_game_window(i)
         fetcher.cleanup()
     
+    if test_mouse:
+        fetcher = WindowsScreenFetcher()
+        fetcher.focus_window()
+        for i in range(100):
+            time.sleep(0.1)
+            x = random.randint(-100, 100)
+            y = random.randint(-100, 100)
+            fetcher.move_mouse(x, y)
 
 #save a few frames to test
