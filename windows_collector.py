@@ -93,15 +93,50 @@ class BITMAPINFOHEADER(Structure):
         self.biSizeImage = w * h * 3
 
 
+        
+class FrameDeltaer():
+    def __init__(self, pid):
+        self.pid = pid
+        self.changing_address = 0x1C4E070
+        self.cached_value = None
+
+    def read_process_memory(self, address, size, allow_partial=False):
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        ERROR_PARTIAL_COPY = 0x012B
+        PROCESS_VM_READ = 0x0010
+        
+        buf = (ctypes.c_char * size)()
+        nread = ctypes.c_size_t()
+        hProcess = kernel32.OpenProcess(PROCESS_VM_READ, False, self.pid)
+        try:
+            kernel32.ReadProcessMemory(hProcess, address, buf, size,
+                ctypes.byref(nread))
+        except WindowsError as e:
+            if not allow_partial or e.winerror != ERROR_PARTIAL_COPY:
+                raise
+        finally:
+            kernel32.CloseHandle(hProcess)
+        return buf[:nread.value]
+            
+    def is_new_frame(self):
+        new_value = int.from_bytes(self.read_process_memory(self.changing_address, 4), byteorder='little', signed=False)
+        if self.cached_value == new_value:
+            return False
+        self.cached_value = new_value
+        return True
+        
+    def fetch_moving_address(self):
+        return int.from_bytes(self.read_process_memory(self.changing_address, 4), byteorder='little', signed=False)
+        
 class WindowsScreenFetcher:
     def __init__(self):
         self.parse_config()
         self.goi_hwnd = self.get_game_window_handle()
         self.get_device_contexts()
-        self.pid = self.get_pid(self.goi_hwnd)
+        self.frame_deltaer = FrameDeltaer(self.get_pid())
        
-    def get_pid(self, hwnd):
-        thread_id, pid = win32process.GetWindowThreadProcessId(hwnd)
+    def get_pid(self):
+        thread_id, pid = win32process.GetWindowThreadProcessId(self.goi_hwnd)
         return pid
         
     def get_game_window_handle(self):
@@ -211,7 +246,8 @@ if __name__ == '__main__':
     benchmark_capture = False
     test_capture = False
     test_mouse = False
-
+    test_frame_deltaer = False
+    
     #Benchmark capture time
     if benchmark_capture:
         fetcher = WindowsScreenFetcher()
@@ -238,5 +274,18 @@ if __name__ == '__main__':
             x = random.randint(-100, 100)
             y = random.randint(-100, 100)
             fetcher.move_mouse(x, y)
-
+        fetcher.cleanup()
+    
+    if test_frame_deltaer:
+        fetcher = WindowsScreenFetcher()
+        fetcher.focus_window()
+        i = 0
+        j = 0
+        cur_time = time.time()
+        while i < 600:
+            is_new = fetcher.frame_deltaer.is_new_frame()
+            if is_new:
+                i += 1
+            j += 1
+        print("Game runs at approximately %i frames per second, sampling at %i per second" % (int(1 / ((time.time() - cur_time) / 600)), int(1 / ((time.time() - cur_time) / j))))
 #save a few frames to test
